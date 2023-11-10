@@ -1,76 +1,104 @@
-import pygame, random
+import pygame, random, string, time
 from settings import * 
+
 from Objects.Player import Player
 from Objects.resources.Tree import Tree
 from Objects.resources.ForestGold import ForestGold
 from Objects.resources.ForestStone import ForestStone
 
-class Level():
+from Objects.Assets import Assets
+
+class UnrenderedSprites:
+    def get_position_on_screen(self, player_pos, sprite_pos) -> tuple:
+        px, py = player_pos
+        sx, sy = sprite_pos 
+        return sx - px, sy - py
+        
+    def on_screen(self, player_pos, sprite_pos):
+        x, y = self.get_position_on_screen(player_pos, sprite_pos)
+        
+        if (x >= 0 - UNRENDER_BOUND_X and x <= SCREEN_WIDTH + UNRENDER_BOUND_X) and (y >= 0 - UNRENDER_BOUND_Y and y <= SCREEN_HEIGHT + UNRENDER_BOUND_Y): return True
+        else: return False
+
+class Level:
     def __init__(self) -> None:
         self.window = pygame.display.get_surface()
-        self.title = pygame.font.SysFont("freesans", 48)
-        self.debug_font = pygame.font.SysFont("freesans", 16)
-
-        self.user_sprites = pygame.sprite.Group()
-        self.tree_sprites = pygame.sprite.Group()
-        self.stone_sprites = pygame.sprite.Group()
+        self.Assets = Assets()
+        self.unrendered = UnrenderedSprites()
+        self.check_unrendered_time = time.time()
+        
+        # Sprites
+        self.player_sprites = pygame.sprite.Group() # This will include this like player body, hands, armor, cosmetics, etc.
+        self.tree_sprites = pygame.sprite.Group() # All trees
+        self.stone_sprites = pygame.sprite.Group() # All stones like gold, stone, diamond, amythesist, etc.
         
         # Index determines layer. Ex. 0 = top layer, 1 = next layer, etc.
-        self.resource_sprites = [self.tree_sprites, self.stone_sprites]
-        self.unrendered_sprites = pygame.sprite.Group()
+        self.render_layers = [
+            self.tree_sprites,
+            self.stone_sprites,
+            self.player_sprites
+        ]
+        self.render_layers.reverse()
         
-        self.foliage: list = []
+        self.world_resources: dict = {}
+        self.generate_world() 
         
-        self.events = {}
-        self.movement_dir = pygame.math.Vector2()
+    def generate_world(self) -> None:
+        self.player = Player((0, 0), self.player_sprites)
         
-        self.setup()
+        self.generate_world_resource(Tree, self.tree_sprites, 200)
+        self.generate_world_resource(ForestGold, self.stone_sprites, 200)
+        self.generate_world_resource(ForestStone, self.stone_sprites, 200)
     
-    def setup(self) -> None:
-        img = self.title.render('Loading game..', True, (255, 255, 255))
-        img_rect = img.get_rect()
-        img_center = (self.window.get_rect().centerx - (img_rect.width / 2), self.window.get_rect().centery - img_rect.height / 2)
-        self.window.blit(img, img_center)
-        pygame.display.update()
-        
-        self.player = Player((0,0), self.user_sprites)
-        self.add_resources(Tree, self.tree_sprites, 1000)
-        self.add_resources(ForestStone, self.stone_sprites, 1000)
-        self.add_resources(ForestGold, self.stone_sprites, 500)
-
-    
-    def add_resources(self, Resource: pygame.sprite.Sprite, Group: pygame.sprite.Group, number: int, scale_interval: tuple = (1, 1)) -> None:
-        scale_int_lower, scale_int_upper = scale_interval
-        
-        for _ in range(number): 
+    def generate_world_resource(self,
+                          Resource: pygame.sprite.Sprite,
+                          render_group: pygame.sprite.Group,
+                          number: int, 
+                          scale_interval: tuple = (1.0, 1.0),
+                          rotation_interval: tuple = (1.0, 1.0)) -> None:
+        for _ in range(number):
             x, y = random.randint(-MAP_WIDTH/2, MAP_WIDTH/2), random.randint(-MAP_WIDTH/2, MAP_HEIGHT/2)
-            self.foliage.append(Resource(
-                                self.player,
-                                (x, y), 
-                                random.uniform(scale_int_lower, scale_int_upper), 
-                                Group, 
-                                self.unrendered_sprites
-                                ))
+            
+            UID = '%032x' % random.getrandbits(128)
+            while UID in self.world_resources: UID = '%032x' % random.getrandbits(128)
+            
+            asset = self.Assets.assets[Resource]
+            if Resource is Tree: asset = asset[random.randint(0, len(asset) - 1)]
+            
+            self.world_resources[UID] = {
+                "load_obj": Resource,
+                "rendered": False,
+                "render_group": render_group,
+                "asset": asset,
+                "coords": (x, y),
+                "scale": random.uniform(*scale_interval),
+                "rotation": random.uniform(*rotation_interval)
+            }
     
+    def check_unrendered(self) -> None:
+        # (player: Sprite, pos: tuple, scale: float, rotation: float, rendered_group: Group, asset: Any) -> None
+        for UID, resource_data in self.world_resources.items():
+            if not resource_data["rendered"] and self.unrendered.on_screen(self.player.coords, resource_data["coords"]):
+                resource_callable = resource_data["load_obj"]
+                resource_callable(
+                    self.player,
+                    resource_data["coords"],
+                    resource_data["scale"],
+                    resource_data["rotation"],
+                    resource_data["render_group"],
+                    resource_data["asset"]
+                )
+                resource_data["rendered"] = True
+                self.world_resources[UID] = resource_data
+            elif resource_data["rendered"] and not self.unrendered.on_screen(self.player.coords, resource_data["coords"]):
+                resource_data["rendered"] = False
+                self.world_resources[UID] = resource_data
+            
     def run(self, dt) -> None:
-        if self.movement_dir != [0, 0] and not ("player_movement" in self.events):
-            self.events["player_movement"] = {"movement_dir": self.movement_dir, "player_speed": self.player.speed}
-        elif "player_movement" in self.events: del self.events["player_movement"]
-        
         self.window.fill(DAY_BACKGROUND)
         
-        self.user_sprites.draw(self.window)
-        self.user_sprites.update(dt)
-        
-        # Draw resources
-        for resource_sprite in self.resource_sprites:
-            resource_sprite.draw(self.window)
-            resource_sprite.update(self.events, dt)
-        
-        self.unrendered_sprites.update(self.events, dt)
-        
-        resources_rendered = sum([len(list(i)) for i in self.resource_sprites])
-        img = self.debug_font.render(f'Resources Sprites Rendered: {resources_rendered}', True, (255, 255, 255))
-        self.window.blit(img, (10, 10 + img.get_rect().height))
-        
-        # pygame.draw.rect(self.window, (255, 255, 0), self.player.hitbox, 2)
+        for render_layer in self.render_layers:
+            render_layer.draw(self.window)
+            render_layer.update(dt)
+            
+        self.check_unrendered()

@@ -15,7 +15,7 @@ class Player(pygame.sprite.Sprite):
         self.pos = pygame.math.Vector2(pygame.display.get_surface().get_rect().center)
         self.coords = pygame.math.Vector2(pos)
         self.direction = pygame.math.Vector2()
-        self.speed = 2000
+        self.speed = 4000
         
         self.hitbox = self.rect.copy().inflate((-self.rect.width*0.75, -self.rect.height * 0.75))
         
