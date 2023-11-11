@@ -1,6 +1,7 @@
-import pygame, random, string, time
+import pygame, random, threading, time, math
 from settings import * 
 
+from Objects.Chunk import Chunk
 from Objects.Player import Player
 from Objects.resources.Tree import Tree
 from Objects.resources.ForestGold import ForestGold
@@ -40,65 +41,76 @@ class Level:
         ]
         self.render_layers.reverse()
         
-        self.world_resources: dict = {}
+        self.chunks: dict = {}
         self.generate_world() 
+        self.thread = threading.Thread(target=self.load_chunks)
+        self.thread.start()
         
     def generate_world(self) -> None:
         self.player = Player((0, 0), self.player_sprites)
+    
+    def unload_chunks(self) -> None:
+        for coord in self.chunks.copy():
+            x, y = coord
+            px, py = self.player.coords
+            x *= CHUNK_WIDTH; y *= CHUNK_HEIGHT
+            dx = math.pow(x - px, 2)
+            dy = math.pow(y - py, 2)
+            if math.sqrt(dx + dy) >= CHUNK_WIDTH * 2:
+                for sprite in self.chunks[coord]["rendered_resources"]:
+                    sprite.kill()
+                del self.chunks[coord]
+            
+    def load_chunks(self) -> None:
+        while True:
+            coordinates = [
+                (-1, 1), (0, 1), (1, 1),
+                (-1, 0), (0, 0), (1, 0),
+                (-1, -1),(0, -1),(1, -1)
+            ]
+            for coord in coordinates:
+                x, y = coord 
+                coords = (int((x * CHUNK_WIDTH + self.player.coords.x) / CHUNK_WIDTH), int((y * CHUNK_HEIGHT + self.player.coords.y)/ CHUNK_HEIGHT))
+                if coords in self.chunks: continue
+                
+                chunk = Chunk(self, 1, coords)
+                resource_rendered = []
+                for resource_data in chunk.chunk.values():
+                    resource_callable = resource_data["load_obj"]
+                    resource_x, resource_y = resource_data["coords"]
+                    x, y = coords[0] * CHUNK_WIDTH + resource_x, coords[1] * CHUNK_HEIGHT + resource_y
+                    rr = resource_callable(
+                            self.player,
+                            (x, y),
+                            resource_data["scale"],
+                            resource_data["rotation"],
+                            resource_data["render_group"],
+                            resource_data["asset"]
+                    )
+                    resource_rendered.append(rr)
+                    
+                resource_data["chunk"] = chunk
+                self.chunks[coords] = {
+                    "chunk_data": chunk,
+                    "rendered_resources": resource_rendered
+                }
+            
+            # TEMP FIX FOR NOT CLOSING
+            try: 
+                for event in pygame.event.get():
+                    if event.type == pygame.QUIT:   
+                        return
+            except: return
+            time.sleep(0.0005)
         
-        self.generate_world_resource(Tree, self.tree_sprites, 200)
-        self.generate_world_resource(ForestGold, self.stone_sprites, 200)
-        self.generate_world_resource(ForestStone, self.stone_sprites, 200)
-    
-    def generate_world_resource(self,
-                          Resource: pygame.sprite.Sprite,
-                          render_group: pygame.sprite.Group,
-                          number: int, 
-                          scale_interval: tuple = (1.0, 1.0),
-                          rotation_interval: tuple = (1.0, 1.0)) -> None:
-        for _ in range(number):
-            x, y = random.randint(-MAP_WIDTH/2, MAP_WIDTH/2), random.randint(-MAP_WIDTH/2, MAP_HEIGHT/2)
-            
-            UID = '%032x' % random.getrandbits(128)
-            while UID in self.world_resources: UID = '%032x' % random.getrandbits(128)
-            
-            asset = self.Assets.assets[Resource]
-            if Resource is Tree: asset = asset[random.randint(0, len(asset) - 1)]
-            
-            self.world_resources[UID] = {
-                "load_obj": Resource,
-                "rendered": False,
-                "render_group": render_group,
-                "asset": asset,
-                "coords": (x, y),
-                "scale": random.uniform(*scale_interval),
-                "rotation": random.uniform(*rotation_interval)
-            }
-    
-    def check_unrendered(self) -> None:
-        # (player: Sprite, pos: tuple, scale: float, rotation: float, rendered_group: Group, asset: Any) -> None
-        for UID, resource_data in self.world_resources.items():
-            if not resource_data["rendered"] and self.unrendered.on_screen(self.player.coords, resource_data["coords"]):
-                resource_callable = resource_data["load_obj"]
-                resource_callable(
-                    self.player,
-                    resource_data["coords"],
-                    resource_data["scale"],
-                    resource_data["rotation"],
-                    resource_data["render_group"],
-                    resource_data["asset"]
-                )
-                resource_data["rendered"] = True
-                self.world_resources[UID] = resource_data
-            elif resource_data["rendered"] and not self.unrendered.on_screen(self.player.coords, resource_data["coords"]):
-                resource_data["rendered"] = False
-                self.world_resources[UID] = resource_data
-            
+
     def run(self, dt) -> None:
         self.window.fill(DAY_BACKGROUND)
         
         for render_layer in self.render_layers:
-            render_layer.draw(self.window)
-            render_layer.update(dt)
-            
-        self.check_unrendered()
+            try:
+                render_layer.draw(self.window)
+                render_layer.update(dt)
+            except Exception as e:
+                pass
+        self.unload_chunks()
