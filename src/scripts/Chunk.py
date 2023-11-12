@@ -1,12 +1,12 @@
 import pygame, random, string, time
 from settings import * 
 
-from Objects.Player import Player
-from Objects.resources.Tree import Tree
-from Objects.resources.ForestGold import ForestGold
-from Objects.resources.ForestStone import ForestStone
+from scripts.Player import Player
+from scripts.resources.Tree import Tree
+from scripts.resources.ForestGold import ForestGold
+from scripts.resources.ForestStone import ForestStone
 
-from Objects.Assets import Assets
+from scripts.Assets import Assets
 
 def seed_from_coord_hash(seed: int, x: int, y: int) -> int:
     return (((seed * 73) ^ x) * 73) ^ y
@@ -59,7 +59,7 @@ class Chunk:
             
     def generate_resources(self) -> None:
         for resource_obj, render_group in self.resources.items():
-            self.generate_resource(resource_obj, render_group, random.randint(1, 15))
+            self.generate_resource(resource_obj, render_group, random.randint(1, 25), (0.35, 1.35), (0, 360))
                 
     def load(self) -> None:
         for resource_data in self.chunk.values():

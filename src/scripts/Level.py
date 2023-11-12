@@ -1,14 +1,14 @@
 import pygame, random, threading, time, math
 from settings import * 
 
-from Objects.Chunk import Chunk
-from Objects.Thread import Thread
-from Objects.Player import Player
-from Objects.resources.Tree import Tree
-from Objects.resources.ForestGold import ForestGold
-from Objects.resources.ForestStone import ForestStone
+from scripts.Chunk import Chunk
+from scripts.Thread import Thread
+from scripts.Player import Player
+from scripts.resources.Tree import Tree
+from scripts.resources.ForestGold import ForestGold
+from scripts.resources.ForestStone import ForestStone
 
-from Objects.Assets import Assets
+from scripts.Assets import Assets
 
 class UnrenderedSprites:
     def get_position_on_screen(self, player_pos, sprite_pos) -> tuple:
@@ -71,7 +71,7 @@ class Level:
                 coords = (int((x * CHUNK_WIDTH + self.player.coords.x) / CHUNK_WIDTH), int((y * CHUNK_HEIGHT + self.player.coords.y)/ CHUNK_HEIGHT))
                 if coords in self.chunks: continue
                 
-                chunk = Chunk(self, 1, coords)
+                chunk = Chunk(self, 10, coords)
                 self.thread.add_queue(chunk.load)
                 self.chunks[coords] = chunk
         
@@ -80,11 +80,10 @@ class Level:
         self.window.fill(DAY_BACKGROUND)
         
         for render_layer in self.render_layers:
-            try:
-                render_layer.update(dt)
-                render_layer.draw(self.window)
-            except Exception as e:
-                pass
+            render_layer.draw(self.window)
+            render_layer.update(dt)
         self.generate_chunks()
         self.unload_chunks()
         self.thread.run_queue()
+
+        self.player.collide(self.chunks, dt)

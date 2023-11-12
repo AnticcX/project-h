@@ -15,9 +15,30 @@ class Player(pygame.sprite.Sprite):
         self.pos = pygame.math.Vector2(pygame.display.get_surface().get_rect().center)
         self.coords = pygame.math.Vector2(pos)
         self.direction = pygame.math.Vector2()
-        self.speed = 400
+        self.max_speed = 400
+        self.speed = self.max_speed
         
+        self.hitbox_radius = (self.rect.width/3.14) * 0.65
         self.hitbox = self.rect.copy().inflate((-self.rect.width*0.75, -self.rect.height * 0.75))
+        self.collided = False
+        
+    def collide(self, chunks, dt) -> None:
+        for chunk in chunks.values():
+            for sprite in chunk.resources_rendered:
+                if sprite.collide(self):
+                    direction = pygame.math.Vector2(sprite.collision_dir(self))
+                    repulsion_speed = self.max_speed * 0.85
+                    
+                    self.coords.x += direction.x * repulsion_speed  * dt
+                    self.coords.y += direction.y * repulsion_speed * dt
+                    self.collided = True
+                    div_velocity = self.speed * 15
+                    self.speed -= self.max_speed/(div_velocity if div_velocity > 0 else 1)
+                    if self.speed <= repulsion_speed: self.speed = repulsion_speed
+                    return
+        else:
+            self.collided = False
+            self.speed = self.max_speed
         
     def input(self) -> None:
         key = pygame.key.get_pressed()
@@ -32,8 +53,8 @@ class Player(pygame.sprite.Sprite):
         if self.direction.magnitude() > 0:
             self.direction = self.direction.normalize()
             
-        self.coords.x += self.direction.x * self.speed * dt
-        self.coords.y += self.direction.y * self.speed * dt
+        self.coords.x += self.direction.x * self.speed * dt 
+        self.coords.y += self.direction.y * self.speed * dt 
         
     def turn(self, mouse_pos):
         x, y = mouse_pos
@@ -48,3 +69,4 @@ class Player(pygame.sprite.Sprite):
         self.movement(dt)
         mouse_pos = pygame.mouse.get_pos()
         self.turn(mouse_pos)
+        # pygame.draw.circle(pygame.display.get_surface(), (255, 0, 0), self.pos, self.hitbox_radius, 1)
