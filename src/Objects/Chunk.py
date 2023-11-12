@@ -28,6 +28,8 @@ class Chunk:
         
         self.Assets = Assets()
         self.generate_resources()
+        
+        self.resources_rendered = []
 
     def generate_resource(self,
                           Resource: pygame.sprite.Sprite,
@@ -35,7 +37,7 @@ class Chunk:
                           number: int, 
                           scale_interval: tuple = (1.0, 1.0),
                           rotation_interval: tuple = (1.0, 1.0)) -> list:
-        resources = {}
+        
         for _ in range(number):
             x, y = random.randint(-CHUNK_WIDTH/2, CHUNK_WIDTH/2), random.randint(-CHUNK_HEIGHT/2, CHUNK_HEIGHT/2)
             
@@ -45,7 +47,7 @@ class Chunk:
             scale = random.uniform(*scale_interval)
             rotation = random.uniform(*rotation_interval)
                 
-            resources[len(resources)] = {
+            resource = {
                 "load_obj": Resource,
                 "render_group": render_group,
                 "asset": asset,
@@ -53,11 +55,28 @@ class Chunk:
                 "scale": scale,
                 "rotation": rotation
             }
-            
-        return resources
+            self.chunk[(x, y)] = resource
             
     def generate_resources(self) -> None:
         for resource_obj, render_group in self.resources.items():
-            resources = self.generate_resource(resource_obj, render_group, random.randint(0, 25))
-            for resource in resources.values():
-                self.chunk[resource["coords"]] = resource
+            self.generate_resource(resource_obj, render_group, random.randint(1, 15))
+                
+    def load(self) -> None:
+        for resource_data in self.chunk.values():
+            resource_callable = resource_data["load_obj"]
+            resource_x, resource_y = resource_data["coords"]
+            x, y = self.x * CHUNK_WIDTH + resource_x, self.y * CHUNK_HEIGHT + resource_y
+            rr = resource_callable(
+                    self.level.player,
+                    (x, y),
+                    resource_data["scale"],
+                    resource_data["rotation"],
+                    resource_data["render_group"],
+                    resource_data["asset"]
+            )
+            self.resources_rendered.append(rr)
+
+    def unload(self) -> None:
+        for sprite in self.resources_rendered:
+            sprite.kill()
+        self.resources_rendered = []

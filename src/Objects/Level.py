@@ -2,6 +2,7 @@ import pygame, random, threading, time, math
 from settings import * 
 
 from Objects.Chunk import Chunk
+from Objects.Thread import Thread
 from Objects.Player import Player
 from Objects.resources.Tree import Tree
 from Objects.resources.ForestGold import ForestGold
@@ -25,6 +26,7 @@ class Level:
     def __init__(self) -> None:
         self.window = pygame.display.get_surface()
         self.Assets = Assets()
+        self.thread = Thread()
         self.unrendered = UnrenderedSprites()
         self.check_unrendered_time = time.time()
         
@@ -43,8 +45,6 @@ class Level:
         
         self.chunks: dict = {}
         self.generate_world() 
-        self.thread = threading.Thread(target=self.load_chunks)
-        self.thread.start()
         
     def generate_world(self) -> None:
         self.player = Player((0, 0), self.player_sprites)
@@ -56,13 +56,11 @@ class Level:
             x *= CHUNK_WIDTH; y *= CHUNK_HEIGHT
             dx = math.pow(x - px, 2)
             dy = math.pow(y - py, 2)
-            if math.sqrt(dx + dy) >= CHUNK_WIDTH * 2:
-                for sprite in self.chunks[coord]["rendered_resources"]:
-                    sprite.kill()
+            if math.sqrt(dx + dy) >= CHUNK_WIDTH * 3:
+                self.thread.add_queue(self.chunks[coord].unload)
                 del self.chunks[coord]
             
-    def load_chunks(self) -> None:
-        while True:
+    def generate_chunks(self) -> None:
             coordinates = [
                 (-1, 1), (0, 1), (1, 1),
                 (-1, 0), (0, 0), (1, 0),
@@ -74,34 +72,8 @@ class Level:
                 if coords in self.chunks: continue
                 
                 chunk = Chunk(self, 1, coords)
-                resource_rendered = []
-                for resource_data in chunk.chunk.values():
-                    resource_callable = resource_data["load_obj"]
-                    resource_x, resource_y = resource_data["coords"]
-                    x, y = coords[0] * CHUNK_WIDTH + resource_x, coords[1] * CHUNK_HEIGHT + resource_y
-                    rr = resource_callable(
-                            self.player,
-                            (x, y),
-                            resource_data["scale"],
-                            resource_data["rotation"],
-                            resource_data["render_group"],
-                            resource_data["asset"]
-                    )
-                    resource_rendered.append(rr)
-                    
-                resource_data["chunk"] = chunk
-                self.chunks[coords] = {
-                    "chunk_data": chunk,
-                    "rendered_resources": resource_rendered
-                }
-            
-            # TEMP FIX FOR NOT CLOSING
-            try: 
-                for event in pygame.event.get():
-                    if event.type == pygame.QUIT:   
-                        return
-            except: return
-            time.sleep(0.0005)
+                self.thread.add_queue(chunk.load)
+                self.chunks[coords] = chunk
         
 
     def run(self, dt) -> None:
@@ -109,8 +81,10 @@ class Level:
         
         for render_layer in self.render_layers:
             try:
-                render_layer.draw(self.window)
                 render_layer.update(dt)
+                render_layer.draw(self.window)
             except Exception as e:
                 pass
+        self.generate_chunks()
         self.unload_chunks()
+        self.thread.run_queue()
