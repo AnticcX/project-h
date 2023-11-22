@@ -1,8 +1,8 @@
 import pygame
 
-from scripts.resources.Tree import Tree
-from scripts.resources.ForestGold import ForestGold
-from scripts.resources.ForestStone import ForestStone
+from world.resources.Tree import Tree
+from world.resources.ForestGold import ForestGold
+from world.resources.ForestStone import ForestStone
 
 class Assets:
     def __init__(self) -> None:

@@ -1,12 +1,12 @@
-import pygame, math
-from settings import *
+import pygame, math, random
 from pygame.sprite import Group
+from settings import *
 
 class Player(pygame.sprite.Sprite):
-    def __init__(self, pos: tuple, *groups: Group) -> None:
-        super().__init__(*groups)
+    def __init__(self, pos: tuple) -> None:
+        super().__init__()
         self.original_image = pygame.image.load("./src/assets/player.png").convert_alpha()
-        self.original_image = pygame.transform.rotozoom(self.original_image, 0, 0.65)
+        self.original_image = pygame.transform.rotozoom(self.original_image, 0, 0.55)
         self.image = self.original_image
         
         self.rect = self.image.get_rect()
@@ -15,30 +15,15 @@ class Player(pygame.sprite.Sprite):
         self.pos = pygame.math.Vector2(pygame.display.get_surface().get_rect().center)
         self.coords = pygame.math.Vector2(pos)
         self.direction = pygame.math.Vector2()
-        self.max_speed = 400
+        self.max_speed = 3500
         self.speed = self.max_speed
+        self.rotation = 0
         
-        self.hitbox_radius = (self.rect.width/3.14) * 0.65
-        self.hitbox = self.rect.copy().inflate((-self.rect.width*0.75, -self.rect.height * 0.75))
-        self.collided = False
+        self.hitbox_radius = (self.rect.width/3.14) * 0.45
+        self.id = random.randint(0, 10000000000000)
         
-    def collide(self, chunks, dt) -> None:
-        for chunk in chunks.values():
-            for sprite in chunk.resources_rendered:
-                if sprite.collide(self):
-                    direction = pygame.math.Vector2(sprite.collision_dir(self))
-                    repulsion_speed = self.max_speed * 0.85
-                    
-                    self.coords.x += direction.x * repulsion_speed  * dt
-                    self.coords.y += direction.y * repulsion_speed * dt
-                    self.collided = True
-                    div_velocity = self.speed * 15
-                    self.speed -= self.max_speed/(div_velocity if div_velocity > 0 else 1)
-                    if self.speed <= repulsion_speed: self.speed = repulsion_speed
-                    return
-        else:
-            self.collided = False
-            self.speed = self.max_speed
+        self.camera_coords = pygame.math.Vector2(pos)
+        self.main_player = None
         
     def input(self) -> None:
         key = pygame.key.get_pressed()
@@ -56,6 +41,15 @@ class Player(pygame.sprite.Sprite):
         self.coords.x += self.direction.x * self.speed * dt 
         self.coords.y += self.direction.y * self.speed * dt 
         
+        self.pos = self.get_position_on_screen()
+        self.rect.center = self.pos
+        
+    def lerp(self, a, b, f) -> None:
+        return a * (1.0 - f) + (b * f)
+        
+    def camera_follow(self, dt) -> None:
+        self.camera_coords = self.lerp(self.camera_coords, self.coords, self.speed * dt * .01)
+            
     def turn(self, mouse_pos):
         x, y = mouse_pos
         dx, dy = x - self.rect.centerx, y - self.rect.centery
@@ -63,10 +57,27 @@ class Player(pygame.sprite.Sprite):
         self.image = pygame.transform.rotate(self.original_image, angle)
         self.rect = self.image.get_rect(center=self.rect.center)
         self.hitbox = self.rect.copy().inflate((-self.rect.width*0.55, -self.rect.height * 0.55))
+        self.rotation = angle
+    
+    def get_position_on_screen(self) -> tuple:
+        player_coords = self.camera_coords
+        if self.main_player:
+            player_coords = self.main_player.coords
+        return pygame.math.Vector2((self.coords.x - player_coords.x + SCREEN_WIDTH/2, self.coords.y - player_coords.y + SCREEN_HEIGHT/2))
+    
+    def _turn(self):
+        self.image = pygame.transform.rotate(self.original_image, self.rotation)
+        self.rect = self.image.get_rect(center=self.rect.center)
         
     def update(self, dt):
-        self.input()
-        self.movement(dt)
-        mouse_pos = pygame.mouse.get_pos()
-        self.turn(mouse_pos)
+        if not self.main_player:
+            self.input()
+            self.movement(dt)
+            mouse_pos = pygame.mouse.get_pos()
+            self.turn(mouse_pos)
+            self.camera_follow(dt)
+        else:
+            self._turn()
+            self.pos = self.get_position_on_screen()
+            self.rect.center = self.pos
         # pygame.draw.circle(pygame.display.get_surface(), (255, 0, 0), self.pos, self.hitbox_radius, 1)
